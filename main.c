@@ -8,18 +8,18 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define LED 1<<PD7		// led a piscar a 1 Hz
+#define LED 1<<PD7
 
-#define START 1<<PD0	// pino que deteta botão para começar o jogo
-#define PAUSE 1<<PD1	// pino que deteta botão para pausar e despausar o jogo
+#define START 1<<PD0	// start button
+#define PAUSE 1<<PD1	// pause/unpause button
 
-#define SDI 1<<PC0 // serial data input matriz
-#define SHCLK 1<<PB1 // shift clock matriz
-#define LACLK 1<<PD4 // latch clock matriz
+#define SDI 1<<PC0 // serial data input, LED matrix
+#define SHCLK 1<<PB1 // shift clock, LED matrix
+#define LACLK 1<<PD4 // latch clock, LED matrix
 
-#define SDI_7 1<<PC1 // serial data input 7 segmentos
-#define SHCLK_7 1<<PC2 // shift clock 7 segmentos
-#define LACLK_7 1<<PC3 // latch clock 7 segmentos
+#define SDI_7 1<<PC1 // serial data input, 7-segment displays
+#define SHCLK_7 1<<PC2 // shift clock, 7-segment displays
+#define LACLK_7 1<<PC3 // latch clock, 7-segment displays
 
 #define TRIG1 1<<PC4 // sonar 1 trigger
 #define ECHO1 1<<PD2 // sonar 1 echo
@@ -27,13 +27,13 @@
 #define ECHO2 1<<PD3 // sonar 2 echo
 
 #define fps 25
-#define T_timer2A 8 // período timer2A em ms
-#define n_row_col 8 // matriz 8x8
-#define v_som 343	// velocidade do som, para calcular a distância a que a mão do jogador se encontra
+#define T_timer2A 8 // timer2A period in ms
+#define n_row_col 8 // 8x8 matrix
+#define v_som 343	// speed of sound (m/s), used to convert sonar echo time to hand distance
 #define tamanho_paleta 3
-#define sonar_MIN 5 // distância mínima em cm da mão ao sonar para controlar a paleta
-#define sonar_MAX 50.0 // distância máxima em cm da mão ao sonar para controlar a paleta
-#define vel_inicial 2	// velocidade com que a bola começa em cada ronda
+#define sonar_MIN 5 // min hand distance (cm) mapped to paddle range
+#define sonar_MAX 50.0 // max hand distance (cm) mapped to paddle range
+#define vel_inicial 2	// ball speed at the start of each round
 
 typedef struct vector {
 	float x;
@@ -46,35 +46,35 @@ typedef struct bola_pong {
 } bola_pong;
 
 volatile char echo_flag = 0;
-volatile uint8_t scan_row = 0, frame_counter = 0, hits = 0, start_flag = 0, pnts_player_1 = 0, pnts_player_2 = 0, idx_pal_1 = 0, idx_pal_2 = 0, fim_refresh_img = 0, fim_flag = 0; // magnitude_v -> magnitude da velocidade em pixeis/segundo, idx_pal -> index do 1º pixel em y ocupado pela paleta
+volatile uint8_t scan_row = 0, frame_counter = 0, hits = 0, start_flag = 0, pnts_player_1 = 0, pnts_player_2 = 0, idx_pal_1 = 0, idx_pal_2 = 0, fim_refresh_img = 0, fim_flag = 0; // idx_pal_x = index of the first row occupied by that player's paddle
 volatile uint16_t start_counter = 0, blink_led = 0, fim_counter = 0;
 float magnitude_v = 1.0;//, fps_param = 125/fps;
-volatile float n_paleta = (sonar_MAX-sonar_MIN)/(n_row_col-tamanho_paleta+1);	// distância que cada posição da paleta tem
+volatile float n_paleta = (sonar_MAX-sonar_MIN)/(n_row_col-tamanho_paleta+1);	// cm of hand movement per paddle position
 bola_pong bola = {
-	{3, 2},		// posição inicial (x,y)
-	{-1, -1}		// velocidade inicial (x,y)
+	{3, 2},
+	{-1, -1}
 };
 
-const vector angulos[tamanho_paleta] = {		// escolher os ângulos que a bola faz após colidir com cada ponto da paleta (vetores unitários)
-	{sqrt(3)/2, -0.5},			// -30º
-	{1.0, 0},						// 0º
-	{sqrt(3)/2, 0.5},			// 30º
+const vector angulos[tamanho_paleta] = {		// unit vectors for bounce angle depending on which part of the paddle is hit
+	{sqrt(3)/2, -0.5},			// -30 deg
+	{1.0, 0},						// 0 deg
+	{sqrt(3)/2, 0.5},			// 30 deg
 };
 
-/*const vector angulos2[n_row_col] = {		// escolher os ângulos que a bola faz após colidir com cada ponto da paleta (vetores unitários)
+/*const vector angulos2[n_row_col] = {
 	
-	{0.5, -sqrt(3)/2},			// -60º
-	{sqrt(2)/2, -sqrt(2)/2},	// -45º
-	{sqrt(3)/2, -0.5},			// -30º
-	{0.9659, -0.2588},			// -15º
-	{0.9659, 0.2588},			// 15º
-	{sqrt(3)/2, 0.5},			// 30º
-	{sqrt(2)/2, sqrt(2)/2},		// 45º
-	{0.5, sqrt(3)/2}			// 60º
+	{0.5, -sqrt(3)/2},			// -60 deg
+	{sqrt(2)/2, -sqrt(2)/2},	// -45 deg
+	{sqrt(3)/2, -0.5},			// -30 deg
+	{0.9659, -0.2588},			// -15 deg
+	{0.9659, 0.2588},			// 15 deg
+	{sqrt(3)/2, 0.5},			// 30 deg
+	{sqrt(2)/2, sqrt(2)/2},		// 45 deg
+	{0.5, sqrt(3)/2}			// 60 deg
 };*/
 
-volatile uint8_t pong_display[n_row_col] = {0};		// array que contém os bits de cada frame, em que só no final do frame é que é alterada para o que está no pong_matrix (para evitar que alguns frames desenhem só certos elementos)
-volatile uint8_t pong_matrix[n_row_col] = {0};		// array a que é adicionada informação dos estados lógicos de cada elemento da matriz ao longo do frame (paletas, bola, outros)
+volatile uint8_t pong_display[n_row_col] = {0};	// buffer actually shown; only swapped in once a frame is fully built, to avoid tearing
+volatile uint8_t pong_matrix[n_row_col] = {0};		// scratch buffer built up during the frame
 
 volatile uint8_t countdown[3][n_row_col] = {
 	{
@@ -131,7 +131,7 @@ uint8_t pause[n_row_col] = {
 	0b00000000
 };
 
-uint8_t numeros[10] = {		// array com números de 0-9 para o display de 7 segmentos
+uint8_t numeros[10] = {
 	0b11111100,
 	0b01100000,
 	0b11011010,
@@ -207,128 +207,127 @@ void init()
 	DDRD &= ~(START);
 	
 	DDRD |= LACLK;
-	DDRB |= SHCLK;												// configura PB1 (OC1A/PCINT1) como saída
+	DDRB |= SHCLK;
 	PORTB |= SHCLK;
 	
 	DDRC |= (TRIG1|TRIG2|SDI|SDI_7|SHCLK_7|LACLK_7);
 	PORTC |= (TRIG1|TRIG2|SHCLK_7);
-	DDRD &= ~(ECHO1|ECHO2);			// Echo 1/2 input
+	DDRD &= ~(ECHO1|ECHO2);
 	
 	DDRD |= LED;
 	PORTD |= LED;
 	
-	// Timer 0A - atualiza display
-	TCCR0A |= (1 << WGM01);								// modo CTC
-	TCCR0B |= (1 << CS01)|(1 << CS00);					// 64 prescaler
+	// Timer 0A - drives display refresh, 1 kHz (CTC, /64 prescaler)
+	TCCR0A |= (1 << WGM01);
+	TCCR0B |= (1 << CS01)|(1 << CS00);
 	//TCCR0B |= (1 << CS02)|(1 << CS00);					// 1024 prescaler
-	OCR0A = 124;													// freq 1 kHz
+	OCR0A = 124;
 	TCNT0 = 0;
-	TIMSK0 |= (1 << OCIE0A);											//enable compare match interrupt (COMPA)
+	TIMSK0 |= (1 << OCIE0A);
 	
-	// Timer 1A - handle inputs, conta o tempo que o sonar demora a receber o echo
-	TCCR1B |= (1 << WGM12);								// modo CTC, 8 prescaler
-	OCR1A = 23999;													// T = 12 ms (~83,3 Hz)
+	// Timer 1A - times how long each sonar takes to echo back, ~83.3 Hz (CTC, /8 prescaler)
+	TCCR1B |= (1 << WGM12);
+	OCR1A = 23999;
 	TCNT1 = 0;
-	TIMSK1 |= (1 << OCIE1A);											//enable compare match interrupt (COMPA)
+	TIMSK1 |= (1 << OCIE1A);
 	
-	// Timer 2A - conta o tempo que cada frame demora
-	TCCR2A |= (1 << WGM21);								// modo CTC
-	TCCR2B |= (1 << CS22)|(1 << CS21);					// prescaler 256
-	OCR2A = 249;													// T = 8 ms (125 Hz)
+	// Timer 2A - frame clock, 125 Hz / 8 ms per tick (CTC, /256 prescaler)
+	TCCR2A |= (1 << WGM21);
+	TCCR2B |= (1 << CS22)|(1 << CS21);
+	OCR2A = 249;
 	TCNT2 = 0;
 	TIMSK2 |= (1 << OCIE2A);
 	
-	// interrupções externas
-	EICRA |= (1 << ISC10)|(1 << ISC00);								// qualquer alteração lógica gera uma interrupção
-	EIMSK |= (1 << INT1)|(1 << INT0);							// enable interrupções externas INT0 e INT1
+	EICRA |= (1 << ISC10)|(1 << ISC00);	// INT0/INT1 fire on any logic change
+	EIMSK |= (1 << INT1)|(1 << INT0);
 	
-	sei();															// enable a interupções globais
+	sei();
 }
 
 void start() {
 	
-	for (int i = 0; i < n_row_col; i++) pong_display[i] |= on[i];		// display ao simbolo ON
-	display_sete_segmentos();			// display aos pontos nos displays de 7 segmentos
-	while (!(PIND & START));				// enquanto não for pressionado o botão de START, ecrã está parado a dar display ao simbolo ON
-	start_round(gerador_random(1, 2));			// o lado do primeiro serviço é aleatório
+	for (int i = 0; i < n_row_col; i++) pong_display[i] |= on[i];
+	display_sete_segmentos();
+	while (!(PIND & START));
+	start_round(gerador_random(1, 2));		// random side serves first
 }
 
 void pause_game() {
-	if ((PIND & PAUSE)) {			// está a ser pressionado o botão de pausar (polling)
+	if ((PIND & PAUSE)) {
 		uint8_t temp[n_row_col] = {0};
-		memcpy(temp, (uint8_t*)pong_display, sizeof(pong_display));	// copia a array pong_display para uma array temporária. Quando despausar, volta-se a copiar os conteúdos do vetor temp para o display
-		memset((uint8_t*)pong_display, 0, sizeof(pong_display));				// pong_display zerado
-		for (int i = 0; i < n_row_col; i++) pong_display[i] |= pause[i];		// display ao simbolo ON
+		memcpy(temp, (uint8_t*)pong_display, sizeof(pong_display));	// stash current frame so it can be restored on unpause
+		memset((uint8_t*)pong_display, 0, sizeof(pong_display));
+		for (int i = 0; i < n_row_col; i++) pong_display[i] |= pause[i];
 		
 		while (PIND & PAUSE);
 		while (!(PIND & PAUSE));
-		while (PIND & PAUSE); //quando deixar de ser verdade, significa que carregou no botão uma segunda vez, então despausa e continua o jogo
+		while (PIND & PAUSE);		// waits for a second press before resuming
 		
-		memset((uint8_t*)pong_display, 0, sizeof(pong_display));				// pong_display zerado
-		memcpy((uint8_t*)pong_display, temp, sizeof(pong_display));	// volta a colocar no display o que já estava do frame anterior
+		memset((uint8_t*)pong_display, 0, sizeof(pong_display));
+		memcpy((uint8_t*)pong_display, temp, sizeof(pong_display));
 	}
 }
 
-void display_sete_segmentos() {		// display aos pontos de cada jogador
-	PORTC &= ~(LACLK_7); // Latch clock LOW
+void display_sete_segmentos() {
+	PORTC &= ~(LACLK_7);
 		
-	for (int j = 0; j < 8; j++) { // envia nº de pontos do jogador 2
-		PORTC &= ~(SHCLK_7); // shift clock LOW
+	for (int j = 0; j < 8; j++) { // player 2's score
+		PORTC &= ~(SHCLK_7);
 		if ((numeros[pnts_player_2] >> j) & 1) PORTC |= SDI_7;
 		else PORTC &= ~(SDI_7);
-		PORTC |= SHCLK_7; // shift clock HIGH
+		PORTC |= SHCLK_7;
 	}
 
-	for (int j = 0; j < 8; j++) { // envia nº de pontos do jogador 1
-		PORTC &= ~(SHCLK_7); // shift clock LOW
+	for (int j = 0; j < 8; j++) { // player 1's score
+		PORTC &= ~(SHCLK_7);
 		if ((numeros[pnts_player_1] >> j) & 1) PORTC |= SDI_7;
 		else PORTC &= ~(SDI_7);
-		PORTC |= SHCLK_7; // shift clock HIGH
+		PORTC |= SHCLK_7;
 	}
 		
-	PORTC |= LACLK_7; // envia output para o display de 7 segmentos
+	PORTC |= LACLK_7;
 }
 
 void add_array_to_matrix(volatile uint8_t *array) {
-	for (int i = 0; i < n_row_col; i++) pong_matrix[i] |= array[i];		// adiciona a informação da array à matriz, sem substituir o que já lá estava
+	for (int i = 0; i < n_row_col; i++) pong_matrix[i] |= array[i];
 }
 
-void handle_input(uint16_t counter, volatile uint8_t *idx_pal) {		// converte o input que recebe (counter1) para o índice correspondente da paleta
-	float dist_cm = (counter-5000)/40000.0*v_som;			// distância em centímetros
-	if ((dist_cm >= sonar_MIN) && (dist_cm < sonar_MAX)) *idx_pal = (volatile uint8_t)(dist_cm-sonar_MIN)/n_paleta; // se o input for válido, atualiza posição da paleta
+void handle_input(uint16_t counter, volatile uint8_t *idx_pal) {
+	float dist_cm = (counter-5000)/40000.0*v_som;		// echo time -> distance (speed of sound / 2, timer tick scaling folded in)
+	if ((dist_cm >= sonar_MIN) && (dist_cm < sonar_MAX)) *idx_pal = (volatile uint8_t)(dist_cm-sonar_MIN)/n_paleta;
 }
 
 void matriz_display() {
-	memcpy((uint8_t*)&pong_display[0], (uint8_t*)&pong_matrix[0], sizeof(pong_display));	// copia a array pong_matrix (temporária) para a array que vai ser usada para dar display (pong_display)
-	memset((uint8_t*)&pong_matrix[0], 0, sizeof(pong_matrix));					// preenche a array pong_matrix toda com 0
+	memcpy((uint8_t*)&pong_display[0], (uint8_t*)&pong_matrix[0], sizeof(pong_display));
+	memset((uint8_t*)&pong_matrix[0], 0, sizeof(pong_matrix));
 }
 
-void fim_jogo(uint8_t player_vencedor) {		// quando alguém chega aos 9 pontos o jogo termina
+void fim_jogo(uint8_t player_vencedor) {
 	TCCR1B &= ~(1 << CS11);
-	TIMSK1 &= ~(1 << OCIE1A);	// já não vai ser preciso ler os inputs dos sonares, então a interrupção é desativada
+	TIMSK1 &= ~(1 << OCIE1A);	// sonar reading no longer needed once the game is over
 					
-	memset((uint8_t*)pong_display, 0, sizeof(pong_display));					// preenche a array pong_display toda com 0
+	memset((uint8_t*)pong_display, 0, sizeof(pong_display));
 	
 	fim_flag = 1;
 	
 	uint8_t a = 0;
 					
 	if (player_vencedor == 1) {
-		while (1) {		// loop infinito, programa chegou ao fim. Para recomeçar tem-se de clicar no botão de reset
-			if (fim_refresh_img) {		// vai alternando entre duas imagens o ecrã de vitória do jogador 1
-				a ^= 1;		// a alterna entre 0 e 1
-				memset((uint8_t*)pong_display, 0, sizeof(pong_display));					// preenche a array pong_display toda com 0
-				memcpy((uint8_t*)pong_display, vencedor_1[a], sizeof(pong_display));	// é displayed na matriz o ecrã quando o vencedor é o jogador 1
+		while (1) {		// game over; only a reset can restart it
+			if (fim_refresh_img) {
+				a ^= 1;
+				memset((uint8_t*)pong_display, 0, sizeof(pong_display));
+				memcpy((uint8_t*)pong_display, vencedor_1[a], sizeof(pong_display));
 				fim_refresh_img = 0;
 			}
 		}
 	}
 	else {
-		while (1) {		// loop infinito, programa chegou ao fim. Para recomeçar tem-se de clicar no botão de reset
-			if (fim_refresh_img) {		// vai alternando entre duas imagens o ecrã de vitória do jogador 2 (400 ms)
-				a ^= 1;		// a alterna entre 0 e 1
-				memset((uint8_t*)pong_display, 0, sizeof(pong_display));					// preenche a array pong_display toda com 0
-				memcpy((uint8_t*)pong_display, vencedor_2[a], sizeof(pong_display));	// é displayed na matriz o ecrã quando o vencedor é o jogador 2
+		while (1) {
+			if (fim_refresh_img) {
+				a ^= 1;
+				memset((uint8_t*)pong_display, 0, sizeof(pong_display));
+				memcpy((uint8_t*)pong_display, vencedor_2[a], sizeof(pong_display));
 				fim_refresh_img = 0;
 			}
 		}
@@ -338,234 +337,232 @@ void fim_jogo(uint8_t player_vencedor) {		// quando alguém chega aos 9 pontos o 
 void start_round(uint8_t player) {
 	
 	if (player == 1) {
-		display_sete_segmentos();		// atualiza display 7 segmentos, pois alguém pontuou
-		if (pnts_player_1 == 9) fim_jogo(1); // jogador 1 ganhou
+		display_sete_segmentos();
+		if (pnts_player_1 == 9) fim_jogo(1);
 	
-		srand(TCNT0);		// o seed usado para gerar um número pseudo-aleatório é o tempo do timer 0, que nunca é parado
-		bola.posicao.x = n_row_col/2;		// começa na coluna do meio para o lado do jogador 1
+		srand(TCNT0);
+		bola.posicao.x = n_row_col/2;
 		bola.posicao.y = gerador_random(0, n_row_col-1);
 		
-		magnitude_v = vel_inicial;		// começa a ronda com a velocidade inicial
+		magnitude_v = vel_inicial;
 		int a = gerador_random(0, 1);
-		if (a) {	// se o número sorteado for 1
-			bola.velocidade.x = -magnitude_v*sqrt(2)/2;	// começa com ângulo de 45º
+		if (a) {
+			bola.velocidade.x = -magnitude_v*sqrt(2)/2;	// +45 deg
 			bola.velocidade.y = magnitude_v*sqrt(2)/2;
 		}
 		else {
-			bola.velocidade.x = -magnitude_v*sqrt(2)/2;	// começa com ângulo de -45º
+			bola.velocidade.x = -magnitude_v*sqrt(2)/2;	// -45 deg
 			bola.velocidade.y = -magnitude_v*sqrt(2)/2;
 		}
 	}
 	else {
-		display_sete_segmentos();		// atualiza display 7 segmentos, pois alguém pontuou
-		if (pnts_player_2 == 9) fim_jogo(2); // jogador 2 ganhou
+		display_sete_segmentos();
+		if (pnts_player_2 == 9) fim_jogo(2);
 		
-		srand(TCNT0);		// o seed usado para gerar um número pseudo-aleatório é o tempo do timer 0, que nunca é parado
-		bola.posicao.x = n_row_col/2-1;		// começa na coluna do meio para o lado do jogador 2
+		srand(TCNT0);
+		bola.posicao.x = n_row_col/2-1;
 		bola.posicao.y = gerador_random(0, n_row_col-1);
 		
-		magnitude_v = vel_inicial;		// começa a ronda com a velocidade inicial
+		magnitude_v = vel_inicial;
 		int a = gerador_random(0, 1);
-		if (a) {	// se o número sorteado for 1
-			bola.velocidade.x = magnitude_v*sqrt(2)/2;	// começa com ângulo de (180-45)º = 135º 
+		if (a) {
+			bola.velocidade.x = magnitude_v*sqrt(2)/2;	// 135 deg
 			bola.velocidade.y = magnitude_v*sqrt(2)/2;
 		}
 		else {
-			bola.velocidade.x = magnitude_v*sqrt(2)/2;	// começa com ângulo de (180+45)º = 225º
+			bola.velocidade.x = magnitude_v*sqrt(2)/2;	// 225 deg
 			bola.velocidade.y = -magnitude_v*sqrt(2)/2;
 		}		
 	}
 	start_flag = 1;
 }
 
-uint8_t gerador_random(int min, int max) {		// gera número inteiro aleatório entre o intervalo [min, max]
+uint8_t gerador_random(int min, int max) {
 	uint8_t rand_num = (rand() % (max-min+1) + min);
 	return rand_num;
 }
 
-void input_sonar() {			// envia os triggers aos sonares para gerar o ultrassom
-		//TCCR2B |= (1 << CS22)|(1 << CS21);			// começa a contar os milisegundos neste frame
+void input_sonar() {
+		//TCCR2B |= (1 << CS22)|(1 << CS21);
 		echo_flag = 0;
 		TCNT1 = 0;
 		//EIMSK |= (1 << INT0);
-		TCCR1B |= (1 << CS11);						// ativa timer1, para ler os inputs provenientes dos sonares
+		TCCR1B |= (1 << CS11);
 			
 		PORTC |= TRIG1;
 		_delay_us(10);
-		PORTC &= ~(TRIG1);								// sonar 1 envia pulso de 10 us
-		while (echo_flag == 0);								// espera até receber input do sonar 1º
+		PORTC &= ~(TRIG1);
+		while (echo_flag == 0);	// wait for sonar 1's echo
 			
 		//EIMSK &= ~(1 << INT0);
 		//EIMSK |= (1 << INT1),
 		PORTC |= TRIG2;
 		_delay_us(10);
-		PORTC &= ~TRIG2;						// sonar 1 envia pulso de 10 us
-		while (echo_flag == 1);						// espera até receber input do sonar 2
+		PORTC &= ~TRIG2;
+		while (echo_flag == 1);	// wait for sonar 2's echo
 			
 		//EIMSK &= ~(1 << INT1);
 }
 
-// interpreta as medições dos sonars para determinar a posição correspondente da paleta
 void physics(float delta) {
 	
-	vector potencial_pos = {		// posição potencial (pode não vir a ser esta a verdadeira posição devido a colisões)
+	vector potencial_pos = {		// where the ball would end up this frame, before collision checks
 		bola.posicao.x + bola.velocidade.x*delta, bola.posicao.y + bola.velocidade.y*delta
 	};
-	vector pos_intermedia = {		// em caso de colisão, guarda a posição da bola na interseção. Necessário para usar um novo vetor a partir desse ponto e para preservar a posição original
+	vector pos_intermedia = {		// last confirmed position; becomes the collision point if one is found
 		bola.posicao.x, bola.posicao.y	
 	};
-	float fac_tempo = 1.0; // em caso de colisão, reduz o fator de tempo para ter em conta a distância que já percorreu até ao ponto pos_intermedia, corrigindo a magnitude do novo vetor velocidade usado no próximo cálculo
-	char colisao = 1;		// inicia-se com 1 para entrar no loop seguinte e verificar se há colisões
+	float fac_tempo = 1.0;		// fraction of this frame's delta still remaining, shrinks after each collision along the way
+	char colisao = 1;
 	
-	while (colisao) { // enquanto houver colisões, corrige a posição e velocidade da bola recursivamente	
-		colisao = 0;	// a partir daqui, caso haja alguma colisão este valor passa para 1, e repete o loop para verificar se há mais alguma colisão neste frame
+	while (colisao) {		// re-checks for further collisions after each bounce, within the same frame
+		colisao = 0;
 			
-		if ((potencial_pos.x >= n_row_col-2) && (bola.posicao.x < n_row_col-2)) {			// se a bola estiver na coluna 7 (ou > 7) e a posição anterior não, verifica se a bola intersetou com a paleta
-				
+		if ((potencial_pos.x >= n_row_col-2) && (bola.posicao.x < n_row_col-2)) {		// crossed into player 2's paddle column this frame
+
 			float intersecao_x = n_row_col-2;
-			float fac_tempo_temp = fac_tempo*(potencial_pos.x-intersecao_x)/(potencial_pos.x-pos_intermedia.x); // fator do tempo passado, pois a bola já percorreu alguma distância até à pos_intermedia
+			float fac_tempo_temp = fac_tempo*(potencial_pos.x-intersecao_x)/(potencial_pos.x-pos_intermedia.x);	// time fraction at which the crossing actually happens
 			float intersecao_y = potencial_pos.y - fac_tempo_temp*bola.velocidade.y*delta;
-			uint8_t idx_intersecao_y = (uint8_t)roundf(intersecao_y);			// índice da interseção
+			uint8_t idx_intersecao_y = (uint8_t)roundf(intersecao_y);
 					
-			if ((intersecao_y >= 0) && (intersecao_y <= n_row_col-1)) {		// se a condição não for verdade, significa que há outra colisão (com uma parede) que ocorre antes deste caso (colisão/não colisão com a paleta do jogador 2
-				if ((idx_intersecao_y >= idx_pal_1) && (idx_intersecao_y <= idx_pal_1+tamanho_paleta-1)) {			// se alguma parte da paleta coincidir com a bola no ponto de interseção
-					if (++hits == 10) {																		// a bola colide e conta-se mais um batimento, ao fim de cada 10 batimentos a velocidade aumenta
-						magnitude_v *= 1.2; // aumenta a velocidade por cada 3 batimentos da bola a uma paleta
+			if ((intersecao_y >= 0) && (intersecao_y <= n_row_col-1)) {		// otherwise a wall collision happens first, handled below
+				if ((idx_intersecao_y >= idx_pal_1) && (idx_intersecao_y <= idx_pal_1+tamanho_paleta-1)) {		// paddle hit
+					if (++hits == 10) {
+						magnitude_v *= 1.2;		// speed ramps up every 10 paddle hits, capped at 12
 						if (magnitude_v >= 12) magnitude_v = 12.0;
 						hits = 0;
 					}
 					fac_tempo = fac_tempo_temp;
 						
-					bola.velocidade.x = -magnitude_v*angulos[idx_intersecao_y-idx_pal_1].x; // novo vetor velocidade da bola
+					bola.velocidade.x = -magnitude_v*angulos[idx_intersecao_y-idx_pal_1].x;
 					bola.velocidade.y = magnitude_v*angulos[idx_intersecao_y-idx_pal_1].y;
 							
 					potencial_pos.x = intersecao_x + fac_tempo*bola.velocidade.x*delta;
 					potencial_pos.y = intersecao_y + fac_tempo*bola.velocidade.y*delta;
 						
-					pos_intermedia.x = intersecao_x;		// guarda posição intermédia da bola na interseção com a paleta do jogador 2
+					pos_intermedia.x = intersecao_x;
 					pos_intermedia.y = intersecao_y;
 					
 					colisao = 1;
 				}
-				else if (potencial_pos.x > n_row_col-0.5) {		// se a paleta não tiver acertado na bola e a posição da bola for 0 ou menos, é ponto para o jogador 2
-					pnts_player_2++;					// +1 ponto para o jogador 2
-					start_round(2);						// recomeça jogada, serviço automático do lado do jogador 2
+				else if (potencial_pos.x > n_row_col-0.5) {	// missed the paddle -> point for player 2
+					pnts_player_2++;
+					start_round(2);
 					//break;
 					return;
 				}
 			}
 		}
-		if ((potencial_pos.x > n_row_col-0.5) && (bola.posicao.x > n_row_col-2)) {		// Se a bola estiver na coluna 7, já é indefensável, então verifica se neste frame já é ponto
-			pnts_player_2++;					// +1 ponto para o jogador 2
-			start_round(2);						// recomeça jogada, serviço automático do lado do jogador 2
+		if ((potencial_pos.x > n_row_col-0.5) && (bola.posicao.x > n_row_col-2)) {	// already past the paddle column, unreturnable
+			pnts_player_2++;
+			start_round(2);
 			//break;
 			return;
 		}
-		if ((potencial_pos.x < 1) && (bola.posicao.x >= 1)) {			// se a bola estiver na coluna 0 (ou < 0) e a posição anterior não
+		if ((potencial_pos.x < 1) && (bola.posicao.x >= 1)) {		// crossed into player 1's paddle column this frame
 
 			float intersecao_x = 1;
-			float fac_tempo_temp = fac_tempo*(potencial_pos.x-intersecao_x)/(potencial_pos.x-pos_intermedia.x); // fator do tempo passado, pois a bola já percorreu alguma distância até à pos_intermedia
+			float fac_tempo_temp = fac_tempo*(potencial_pos.x-intersecao_x)/(potencial_pos.x-pos_intermedia.x);
 			float intersecao_y = potencial_pos.y - fac_tempo_temp*bola.velocidade.y*delta;
-			uint8_t idx_intersecao_y = (uint8_t)roundf(intersecao_y);			// índice da interseção
+			uint8_t idx_intersecao_y = (uint8_t)roundf(intersecao_y);
 				
-			if ((intersecao_y >= 0) && (intersecao_y <= n_row_col-1)) {		// se a condição não for verdade, significa que há outra colisão (com uma parede) que ocorre antes deste caso (colisão/não colisão com a paleta do jogador 1)
-				if ((idx_intersecao_y >= idx_pal_2) && (idx_intersecao_y <= idx_pal_2+tamanho_paleta-1)) {			// se alguma parte da paleta coincidir com a bola no ponto de interseção
-					if (++hits == 10) {																		// a bola colide e conta-se mais um batimento, ao fim de cada 10 batimentos a velocidade aumenta
+			if ((intersecao_y >= 0) && (intersecao_y <= n_row_col-1)) {
+				if ((idx_intersecao_y >= idx_pal_2) && (idx_intersecao_y <= idx_pal_2+tamanho_paleta-1)) {
+					if (++hits == 10) {
 						magnitude_v *= 1.2;
 						if (magnitude_v >= 12) magnitude_v = 12.0;
 						hits = 0;
 					}
 					fac_tempo = fac_tempo_temp;
 						
-					bola.velocidade.x = magnitude_v*angulos[idx_intersecao_y-idx_pal_2].x; // novo vetor velocidade da bola
+					bola.velocidade.x = magnitude_v*angulos[idx_intersecao_y-idx_pal_2].x;
 					bola.velocidade.y = magnitude_v*angulos[idx_intersecao_y-idx_pal_2].y;
 						
 					potencial_pos.x = intersecao_x + fac_tempo*bola.velocidade.x*delta;
 					potencial_pos.y = intersecao_y + fac_tempo*bola.velocidade.y*delta;
 						
-					pos_intermedia.x = intersecao_x;		// guarda posição intermédia da bola na interseção com a paleta do jogador 2
+					pos_intermedia.x = intersecao_x;
 					pos_intermedia.y = intersecao_y;
 					
 					colisao = 1;
 				}
-				else if (potencial_pos.x < 0) {		// se a paleta não tiver acertado na bola e a posição da bola for 0 ou menos, é ponto para o jogador 1
-					pnts_player_1++;					// +1 ponto para o jogador 1
-					start_round(1);						// recomeça jogada, serviço automático do lado do jogador 1
+				else if (potencial_pos.x < 0) {	// missed the paddle -> point for player 1
+					pnts_player_1++;
+					start_round(1);
 					//break;
 					return;
 				}
 			}
 		}
-		if ((potencial_pos.x < -0.5) && (bola.posicao.x < 1)) {		// Se a bola estiver na coluna 0, já é indefensável, então verifica se neste frame já é ponto
-			pnts_player_1++;					// +1 ponto para o jogador 1
-			start_round(1);						// recomeça jogada, serviço automático do lado do jogador 1
+		if ((potencial_pos.x < -0.5) && (bola.posicao.x < 1)) {	// already past the paddle column, unreturnable
+			pnts_player_1++;
+			start_round(1);
 			//break;
 			return;
 		}
-		if (potencial_pos.y > n_row_col-1) {		// colisão com parede inferior
+		if (potencial_pos.y > n_row_col-1) {		// bounce off bottom wall
 				
 			float intersecao_y = n_row_col-1;
-			float fac_tempo_temp = fac_tempo*(potencial_pos.y-intersecao_y)/(potencial_pos.y-pos_intermedia.y);	// (potencial_pos.y-0)/(potencial_pos.y-pos_intermedia.y); fator do tempo passado para corrigir a magnitude do vetor após interseção (começando no ponto pos_intermedia até à posição potencial)
-			float intersecao_x = potencial_pos.x - fac_tempo_temp*bola.velocidade.x*delta;		// guarda posição intermédia da bola na interseção com a parede inferior
-			if ((intersecao_x >= 0) && (intersecao_x <= n_row_col-1)) {			// se a condição não for verdade, significa que há outra colisão/ponto que ocorre antes desta colisão com a parede inferior
+			float fac_tempo_temp = fac_tempo*(potencial_pos.y-intersecao_y)/(potencial_pos.y-pos_intermedia.y);
+			float intersecao_x = potencial_pos.x - fac_tempo_temp*bola.velocidade.x*delta;
+			if ((intersecao_x >= 0) && (intersecao_x <= n_row_col-1)) {
 				fac_tempo = fac_tempo_temp;
 				pos_intermedia.x = intersecao_x;
 				pos_intermedia.y = intersecao_y;
-				potencial_pos.y = intersecao_y*2 - potencial_pos.y;		// posição potencial em y seguinte considerando a tabela
-				bola.velocidade.y *= -1;								// inverte velocidade em y	
+				potencial_pos.y = intersecao_y*2 - potencial_pos.y;	// mirror the overshoot back across the wall
+				bola.velocidade.y *= -1;
 				colisao = 1;
 			}
 		}
-		if (potencial_pos.y < 0) {					// colisão com parede superior
+		if (potencial_pos.y < 0) {		// bounce off top wall
 				
 			float intersecao_y = 0;
-			float fac_tempo_temp = fac_tempo*(potencial_pos.y-intersecao_y)/(potencial_pos.y-pos_intermedia.y);	// (potencial_pos.y-0)/(potencial_pos.y-pos_intermedia.y); fator do tempo passado para corrigir a magnitude do vetor após interseção (começando no ponto pos_intermedia até à posição potencial)
-			float intersecao_x = potencial_pos.x - fac_tempo_temp*bola.velocidade.x*delta;		// guarda posição intermédia da bola na interseção com a parede superior
-			if ((intersecao_x >= 0) && (intersecao_x <= n_row_col-1)) {			// se a condição não for verdade, significa que há outra colisão/ponto que ocorre antes desta colisão com a parede superior
+			float fac_tempo_temp = fac_tempo*(potencial_pos.y-intersecao_y)/(potencial_pos.y-pos_intermedia.y);
+			float intersecao_x = potencial_pos.x - fac_tempo_temp*bola.velocidade.x*delta;
+			if ((intersecao_x >= 0) && (intersecao_x <= n_row_col-1)) {
 				fac_tempo = fac_tempo_temp;
 				pos_intermedia.x = intersecao_x;
 				pos_intermedia.y = intersecao_y;
-				potencial_pos.y = intersecao_y*2 - potencial_pos.y;						// posição potencial em y seguinte considerando a tabela
-				bola.velocidade.y *= -1;					// inverte velocidade em y
+				potencial_pos.y = intersecao_y*2 - potencial_pos.y;
+				bola.velocidade.y *= -1;
 				colisao = 1;
 			}
 		}
-	}										// nenhum caso especial
-	bola.posicao.x = potencial_pos.x;				// atualiza posição em x
-	bola.posicao.y = potencial_pos.y;				// atualiza posição em y
+	}
+	bola.posicao.x = potencial_pos.x;
+	bola.posicao.y = potencial_pos.y;
 }
 
 int main(void)
 {
-	init();					// chama função para fazer inicializações
+	init();
 	start();
     while (1) 
     {	
-		pause_game();			// verifica se o botão para pausar está a ser pressionado (polling)
+		pause_game();
 			
-		TCNT2 = 0;													// reset timer2A (começa a contar o tempo deste frame)
+		TCNT2 = 0;
 		frame_counter = 0;
 
-		input_sonar();		// sonares enviam ultrassons e são lidos os inputs nas interrupções externas
+		input_sonar();
 
-		for (int i = 0; i < tamanho_paleta; i++) pong_matrix[idx_pal_1+i] |= (1 << (n_row_col-1));		// atualiza a matriz adicionando a paleta 1
-		for (int i = 0; i < tamanho_paleta; i++) pong_matrix[idx_pal_2+i] |= 1;		// atualiza a matriz adicionando a paleta 2
+		for (int i = 0; i < tamanho_paleta; i++) pong_matrix[idx_pal_1+i] |= (1 << (n_row_col-1));
+		for (int i = 0; i < tamanho_paleta; i++) pong_matrix[idx_pal_2+i] |= 1;
 		
-		while (frame_counter < 5);		// enquanto não se passarem 40 ms neste frame (25 fps), esperar até tal tempo
-		float delta = (frame_counter + TCNT2/(OCR2A+1))*8.0/1000;		// calcula o tempo que se passou neste frame
-		
-		if (!start_flag) {					// se start_flag != 1, então é para calcular a posição seguinte da bola. Se start_flag for 1, a bola não é displayed
-			physics(delta);									// chamar função physics para calcular a posição e velocidade da bola
-			pong_matrix[(uint8_t)roundf(bola.posicao.y)] |= (1 << (uint8_t)roundf(bola.posicao.x));		// atualiza a matriz adicionando a bola
+		while (frame_counter < 5);		// pace the loop to 25 fps (40 ms/frame)
+		float delta = (frame_counter + TCNT2/(OCR2A+1))*8.0/1000;
+
+		if (!start_flag) {
+			physics(delta);
+			pong_matrix[(uint8_t)roundf(bola.posicao.y)] |= (1 << (uint8_t)roundf(bola.posicao.x));
 		}
-		else {							// start_flag = 1, inicia contagem decrescente até começar nova ronda
-			add_array_to_matrix(countdown[start_counter/1500]);	// 50*(8 ms) = 400 ms = 1/3*(1,8 s), tempo de espera até iniciar a próxima ronda
+		else {
+			add_array_to_matrix(countdown[start_counter/1500]);	// ~1.8 s countdown before serve, split into 3 stages
 		}
-		matriz_display();							// atualiza a matriz usada para o display
+		matriz_display();
 	}
 }
 
-// atualiza display
 ISR (TIMER0_COMPA_vect) {
 	
 	if (start_flag) {
@@ -585,49 +582,46 @@ ISR (TIMER0_COMPA_vect) {
 			fim_counter = 0;
 		}
 	
-	PORTD &= ~LACLK; // Latch clock LOW
+	PORTD &= ~LACLK;
 	
 	int a = (1 << scan_row);
-	for (int j = 0; j < n_row_col; j++) { // envia a linha
-		PORTB &= ~SHCLK; // shift clock LOW
+	for (int j = 0; j < n_row_col; j++) {
+		PORTB &= ~SHCLK;
 		if ((a >> j) & 1) PORTC &= ~SDI;
 		else PORTC |= SDI;
-		PORTB |= SHCLK; // shift clock HIGH
+		PORTB |= SHCLK;
 	}
 	
-	for (int i = n_row_col-1; i >= 0; i--)	{ // envia as colunas dessa linha
-		PORTB &= ~SHCLK; // shift clock LOW
-		if ((pong_display[scan_row] >> i) & 1) PORTC |= SDI; // verifica se o i-ésimo bit é 1 (diferente de 0 -> true)
+	for (int i = n_row_col-1; i >= 0; i--)	{
+		PORTB &= ~SHCLK;
+		if ((pong_display[scan_row] >> i) & 1) PORTC |= SDI;
 		else PORTC &= ~SDI;
-		PORTB |= SHCLK; // shift clock HIGH
+		PORTB |= SHCLK;
 	}
 	
-	if (++scan_row >= n_row_col) scan_row = 0; // avança para a linha seguinte
+	if (++scan_row >= n_row_col) scan_row = 0;
 	
-	PORTD |= LACLK; // envia output para a matriz
+	PORTD |= LACLK;
 }
 
-// Trigger sonar
+// fires once both sonar echoes have been captured
 ISR (TIMER1_COMPA_vect) { 
-	if (++echo_flag == 2) {		// ambos os inputs dos sonares já foram obtidos
-		TCCR1B &= ~(1 << CS11);		// no resto deste frame, para timer1
-		TCNT1 = 0;					// reset ao counter1
+	if (++echo_flag == 2) {
+		TCCR1B &= ~(1 << CS11);
+		TCNT1 = 0;
 	}
 }
 
-// conta o tempo que cada frame demora
 ISR (TIMER2_COMPA_vect) {
-	frame_counter++;				// conta 8 ms de cada vez (tempo = j*8 ms)
+	frame_counter++;
 }
 
-// Sonar 1 echo count
 ISR (INT0_vect) {
-	uint16_t echo_cnt = TCNT1;				// captura o timer counter 1
-	handle_input(echo_cnt, &idx_pal_1);		// e calcula o local onde a paleta tem de estar
+	uint16_t echo_cnt = TCNT1;
+	handle_input(echo_cnt, &idx_pal_1);
 }
 
-// Sonar 2 echo count
 ISR (INT1_vect) {
-	uint16_t echo_cnt = TCNT1;				// captura o timer counter 1
-	handle_input(echo_cnt, &idx_pal_2);		// e calcula o local onde a paleta tem de estar
+	uint16_t echo_cnt = TCNT1;
+	handle_input(echo_cnt, &idx_pal_2);
 }
