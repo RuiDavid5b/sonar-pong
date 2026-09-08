@@ -19,7 +19,7 @@ The game supports:
 
 ---
 
-## System Overview
+## Architecture
 
 The system uses an **ATmega168** as the central controller. The microcontroller measures the distance from each player's hand to an HC-SR04 ultrasonic sensor and maps that distance to the corresponding paddle position.
 
@@ -74,7 +74,7 @@ Two **74HC595 shift registers** are used to control the matrix:
 * One shift register controls the rows
 * One shift register controls the columns
 
-The matrix is multiplexed by activating one row at a time at a high refresh rate. Due to persistence of vision, the complete game display appears simultaneously to the player.
+The matrix is multiplexed by activating one row at a time while updating the corresponding column data.
 
 <img src="assets/imagemLEDS.jpg" alt="LED-matrix" width="200">
 
@@ -153,17 +153,10 @@ The game relies heavily on hardware timers and external interrupts to coordinate
 
 ### Timer 0 — Display Refresh
 
-Timer 0 generates an interrupt every **0.5 ms**.
+Timer 0 generates an interrupt every **0.5 ms** to maintain the LED matrix refresh cycle.
+Each interrupt advances the active row and updates the corresponding column data.
 
-On each interrupt, the next LED matrix row is selected and its corresponding column data is transmitted.
-
-Only one row is active at a time. The refresh frequency is high enough that persistence of vision makes the entire matrix appear continuously illuminated.
-
-Timer 0 also handles:
-
-* Countdown display
-* Status LED toggling
-* Winner animation
+The same timer also handles time-based events such as countdown display updates, status LED toggling, and winner animations.
 
 ### Timer 1 — Ultrasonic Timing
 
@@ -197,7 +190,7 @@ When an echo signal is active, the corresponding timer counter is captured and p
 
 The `physics` function calculates the next position and velocity of the ball while handling collisions with the walls and paddles.
 
-Collision detection is performed recursively when the calculated movement would result in multiple collisions within a single frame.
+Collision detection is performed iteratively when the calculated movement would result in multiple collisions within a single frame.
 
 For example, if the potential ball position crosses both the x and y boundaries, the function determines which collision occurs first. It then:
 
@@ -224,16 +217,14 @@ The ball also increases in speed as the rally progresses. Every 10 hits, its vel
 
 ## Display Multiplexing
 
-The LED matrix is updated one row at a time.
-
-At each Timer 0 interrupt:
+The LED matrix is driven using row multiplexing, with only one row active at a time. During each refresh interrupt:
 
 1. The next row is selected.
 2. The corresponding column data is loaded into the shift registers.
 3. The row is activated.
 4. The process repeats for the next row.
 
-With a refresh frequency of approximately **2 kHz**, persistence of vision makes the individual row updates appear as a single complete image.
+With a refresh frequency of approximately **2 kHz**. Because the rows are refreshed rapidly, persistence of vision makes the complete game display appear continuously illuminated.
 
 ---
 
