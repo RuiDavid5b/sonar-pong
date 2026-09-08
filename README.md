@@ -7,9 +7,6 @@ The project combines embedded C programming, hardware timers, external interrupt
 ## Demo
 
 [![Sonar Pong demo](assets/sonar_pong_thumbnail.png)](https://github.com/user-attachments/assets/68ec2b0f-fd15-4aaa-95f5-8b711553ba2a)
-
-![Start Menu](menu_start.jpg)
-
 The game supports:
 
 * Two-player gameplay
