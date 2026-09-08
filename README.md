@@ -13,13 +13,12 @@ The project combines embedded C programming, hardware timers, external interrupt
 The game supports:
 
 * Two-player gameplay
-* Paddle control using two HC-SR04 ultrasonic sensors
-* Start, pause, and reset controls
 * Real-time ball physics and collision detection
+* Start, pause, and reset controls
+* Paddle control using two HC-SR04 ultrasonic sensors
 * Score tracking using two 7-segment displays
 * Countdown animations between rounds
 * Winner indication
-* LED status indicator
 
 ---
 
@@ -29,7 +28,7 @@ The system uses an **ATmega168** as the central controller. The microcontroller 
 
 The game state and physics are processed by the microcontroller, while the display is driven through shift registers to reduce the number of GPIO pins required.
 
-<img src="assets/block_diagram.jpg" width="390">
+<img src="assets/block_diagram.jpg">
 
 ---
 
@@ -50,7 +49,7 @@ It also uses the two external interrupts:
 * `INT0`
 * `INT1`
 
-![ATmega168](atmega168-pins.jpg)
+<img src="assets/atmega168-pins.jpg" alt="ATmega168" width="300">
 
 ### HC-SR04 Ultrasonic Sensors
 
@@ -67,7 +66,7 @@ The microcontroller sends a trigger pulse and measures the duration of the retur
 
 The usable hand-distance range for the game is approximately **10–50 cm**.
 
-![HC-SR04](sonar.jpg)
+<img src="assets/sonar.jpg" alt="HC-SR04" width="120">
 
 ### LED Matrix
 
@@ -80,7 +79,7 @@ Two **74HC595 shift registers** are used to control the matrix:
 
 The matrix is multiplexed by activating one row at a time at a high refresh rate. Due to persistence of vision, the complete game display appears simultaneously to the player.
 
-![LED Matrix](imagemLEDS.jpg)
+<img src="assets/imagemLEDS.jpg" alt="LED-matrix" width="200">
 
 ### Buttons
 
@@ -90,7 +89,7 @@ Three buttons provide game control:
 2. Pause
 3. Reset
 
-![Buttons](botao.jpg)
+<img src="assets/botao.jpg" alt="buttons" width="100">
 
 ### Status LED
 
@@ -98,27 +97,13 @@ A blinking LED is used as a system status indicator.
 
 The LED alternates between on and off states every 0.5 seconds.
 
-![Status LED](ledvermelho.jpg)
+<img src="assets/ledvermelho.jpg" alt="status-LED" width="80">
 
 ### 7-Segment Displays
 
 Two 7-segment displays show the current score of each player.
 
-![Score Displays](display_pontuacao.jpg)
-
----
-
-## Electrical Design
-
-The complete circuit was designed in **KiCad**.
-
-![Electrical Schematic](arquitetura_sistema.jpg)
-
-The original design also included a PCB layout intended to accommodate four 8×8 LED matrices and form a larger 16×16 display.
-
-![PCB Layout](PCB.jpg)
-
-The final implementation was adapted to use a single 8×8 LED matrix.
+<img src="assets/display_pontuacao.jpg" alt="7-segment" width="300">
 
 ---
 
@@ -127,6 +112,8 @@ The final implementation was adapted to use a single 8×8 LED matrix.
 The game is implemented in **C** for the ATmega168.
 
 The software is organized around game-state handling, input processing, display updates, timing, and physics.
+
+<img src="assets/fluxograma_programa.jpg" alt="program-diagram" width="300">
 
 ### Game Flow
 
@@ -181,15 +168,13 @@ Timer 0 also handles:
 * Status LED toggling
 * Winner animation
 
-![Timer 0](timer0.jpg)
-
 ### Timer 1 — Ultrasonic Timing
 
 Timer 1 coordinates the two ultrasonic sensors.
 
 After 12 ms, it triggers the second sonar. Once both sensors have completed their measurements, the timer stops.
 
-![Timer 0 and Timer 1](fluxograma_timer0e1.jpg)
+<img src="assets/fluxograma_timer0e1.jpg" alt="timer0-1-diagram" width="200">
 
 ### Timer 2 — Frame Timing
 
@@ -197,15 +182,13 @@ Timer 2 generates an interrupt every **8 ms**.
 
 It is used to measure the time taken by each frame so that the next ball position can be calculated according to the elapsed time.
 
-![Timer 1 and Timer 2](timer1e2.jpg)
-
 ### `INT0` and `INT1` — Sonar Echo
 
 The two external interrupts handle the echo signals from the ultrasonic sensors.
 
 When an echo signal is active, the corresponding timer counter is captured and passed to `handle_input`.
 
-![Timer 2, INT0 and INT1](fluxograma_timer2eint0e1.jpg)
+<img src="assets/fluxograma_timer2eint0e1.jpg" alt="timer1-2-diagram" width="200">
 
 ### Input Processing
 
@@ -232,11 +215,11 @@ When the ball hits a paddle, its new velocity depends on the relative position o
 
 The ball also increases in speed as the rally progresses. Every 10 hits, its velocity magnitude increases by 20%, up to a maximum magnitude of 12.
 
-![Physics](exemplo_physics.jpg)
+<img src="assets/exemplo_physics.jpg" alt="physics-matrix" width="320">
 
 *Ball collision and movement calculation*
 
-![Physics Flowchart](fluxograma_physics.jpg)
+<img src="assets/fluxograma_physics.jpg" alt="physics-diagram" width="240">
 
 *Physics flowchart*
 
@@ -254,58 +237,6 @@ At each Timer 0 interrupt:
 4. The process repeats for the next row.
 
 With a refresh frequency of approximately **2 kHz**, persistence of vision makes the individual row updates appear as a single complete image.
-
----
-
-## Game Screens
-
-### Start
-
-The game initially displays a start screen and waits for a player to press the start button.
-
-![Start Menu](menu_start.jpg)
-
-### Round Countdown
-
-After a player scores, a countdown from 3 to 1 is displayed before the next round begins.
-
-![Countdown](numero3.jpg)
-
-### Pause
-
-The pause button displays a pause symbol and stops the game until the button is pressed again.
-
-![Pause Menu](menu_pause.jpg)
-
-### Winner
-
-When a player reaches 9 points, the game displays the number of the winning player.
-
-![Player 1 Winner](numero1.jpg)
-
-![Player 2 Winner](numero2.jpg)
-
----
-
-## Results
-
-The final implementation provides a playable two-player Pong game controlled entirely through physical hardware.
-
-The completed system supports:
-
-* Real-time paddle control through ultrasonic sensors
-* Interrupt-driven input handling
-* Hardware-timer-based scheduling
-* LED matrix multiplexing
-* Shift-register-based display control
-* Real-time ball physics
-* Collision detection
-* Dynamic ball speed
-* Score tracking
-* Start, pause, and reset states
-* Countdown and winner animations
-
-The final display uses a single 8×8 LED matrix. The original hardware design was intended to use four matrices to create a 16×16 display, but the implementation was adapted to the available hardware.
 
 ---
 
