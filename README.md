@@ -6,8 +6,7 @@ The project combines embedded C programming, hardware timers, external interrupt
 
 ## Demo
 
-<img src="assets/sonar_pong_demo.mp4" width="390">
-[![Sonar Pong demo]](assets/sonar_pong_demo.mp4)
+[![Sonar Pong demo](assets/sonar_pong_thumbnail.png)](https://github.com/user-attachments/assets/68ec2b0f-fd15-4aaa-95f5-8b711553ba2a)
 
 ![Start Menu](menu_start.jpg)
 
